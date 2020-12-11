@@ -4,29 +4,32 @@ namespace Sofa\History;
 
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\Pivot;
 use Illuminate\Support\Arr;
-use function PHPUnit\Framework\isEmpty;
+use Illuminate\Support\Str;
 
 class HistoryListener
 {
-    public function handle($eventName, array $data = [])
+    public function handle($event, array $data = [])
     {
-        $event = preg_replace('/eloquent\.(\w+): .*/', '$1', $eventName);
         $model = $data[0] ?? null;
+        if (!$model || $model instanceof History) {
+            return;
+        }
 
-        if (method_exists($this, $event) && $model && !$model instanceof History) {
-            $this->$event($model);
+        $method = preg_replace('/eloquent\.(\w+): .*/', '$1', $event);
+        if ($model instanceof Pivot) {
+            $method = $method . 'Pivot';
+        }
+
+        if (method_exists($this, $method)) {
+            $this->$method($model);
         }
     }
 
     protected function created(Model $model): void
     {
-        $history = new History;
-        $history->model()->associate($model);
-        $history->data = $this->getDirty($model);
-        $history->action = __FUNCTION__;
-        $history->user_id = $this->getUserId();
-        $history->save();
+        $this->newRecord($model, History::ACTION_CREATED, $this->getDirty($model));
     }
 
     protected function updated(Model $model): void
@@ -37,58 +40,35 @@ class HistoryListener
             return;
         }
 
-        $history = new History;
-        $history->model()->associate($model);
-        $history->data = $dirty;
-        $history->version = History::for($model)->count() + 1;
-        $history->action = __FUNCTION__;
-        $history->user_id = $this->getUserId();
-        $history->save();
+        $this->newRecord($model, History::ACTION_UPDATED, $dirty);
     }
 
     protected function deleted(Model $model): void
     {
-        $history = new History;
-        $history->model()->associate($model);
-        $history->version = History::for($model)->count() + 1;
-        $history->action = __FUNCTION__;
-        $history->user_id = $this->getUserId();
-        $history->save();
+        $this->newRecord($model, History::ACTION_DELETED);
     }
 
     protected function forceDeleted(Model $model): void
     {
-        $history = new History;
-        $history->model()->associate($model);
-        $history->version = History::for($model)->count() + 1;
-        $history->action = __FUNCTION__;
-        $history->user_id = $this->getUserId();
-        $history->save();
+        $this->newRecord($model, History::ACTION_FORCE_DELETED);
     }
 
     protected function restored(Model $model): void
     {
-        $history = new History;
-        $history->model()->associate($model);
-        $history->version = History::for($model)->count() + 1;
-        $history->action = __FUNCTION__;
-        $history->user_id = $this->getUserId();
-        $history->save();
+        $this->newRecord($model, History::ACTION_RESTORED);
     }
 
     protected function getDirty(Model $model): array
     {
         return Arr::except($model->getDirty(), [
             $model->getKeyName(),
-//            $model->getCreatedAtColumn(),
-//            $model->getUpdatedAtColumn(),
             method_exists($model, 'getDeletedAtColumn') ? $model->getDeletedAtColumn() : null,
         ]);
     }
 
     protected function getUserId()
     {
-        $userResolver = config('sofa_history.user_resolver');
+        $userResolver = config('history.user_resolver');
 
         if ($userResolver && is_callable($userResolver)) {
             $user = $userResolver();
@@ -110,5 +90,44 @@ class HistoryListener
         }
 
         return auth()->id();
+    }
+
+    protected function createdPivot(Pivot $pivot): void
+    {
+        $this->newPivotRecord($pivot, History::ACTION_PIVOT_ATTACHED);
+    }
+
+    protected function updatedPivot(Pivot $pivot): void
+    {
+        $this->newPivotRecord($pivot, History::ACTION_PIVOT_UPDATED);
+    }
+
+    protected function deletedPivot(Pivot $pivot): void
+    {
+        $this->newPivotRecord($pivot, History::ACTION_PIVOT_DETACHED);
+    }
+
+    private function newPivotRecord(Pivot $pivot, string $action): void
+    {
+        $model = $pivot->pivotParent;
+
+        $data = collect($pivot->getAttributes())
+            ->map(fn ($value, $key) => is_numeric($value) && Str::endsWith($key, '_id') && !is_int($value) ? (int) $value : $value)
+            ->toArray();
+        $data['_pivot_model'] = $pivot::class;
+        $data['_pivot_table'] = $pivot->getTable();
+        $data['_pivot_model_type'] = $pivot->getMorphClass();
+
+        $this->newRecord($model, $action, $data);
+    }
+
+    private function newRecord(Model $model, string $action, array $data = []): void
+    {
+        $history = new History();
+        $history->data = $data;
+        $history->action = $action;
+        $history->model()->associate($model);
+        $history->user_id = $this->getUserId();
+        $history->save();
     }
 }

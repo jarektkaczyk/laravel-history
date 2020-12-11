@@ -1,52 +1,125 @@
-# 
+# Eloquent History
 
-[![Latest Version on Packagist](https://img.shields.io/packagist/v/sofa/history.svg?style=flat-square)](https://packagist.org/packages/sofa/history)
-[![GitHub Tests Action Status](https://img.shields.io/github/workflow/status/sofa/history/run-tests?label=tests)](https://github.com/sofa/history/actions?query=workflow%3Arun-tests+branch%3Amaster)
-[![Total Downloads](https://img.shields.io/packagist/dt/sofa/history.svg?style=flat-square)](https://packagist.org/packages/sofa/history)
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/sofa/laravel-history.svg?style=flat-square)](https://packagist.org/packages/sofa/laravel-history)
+[![GitHub Tests Action Status](https://github.com/jarektkaczyk/laravel-history/workflows/Tests/badge.svg)](https://github.com/jarektkaczyk/laravel-history/actions/workflows/run-tests.yml?branch%3Amain)
+[![Total Downloads](https://img.shields.io/packagist/dt/sofa/laravel-history.svg?style=flat-square)](https://packagist.org/packages/sofa/laravel-history)
 
+Automatically record history of your Eloquent models
 
-This is where your description should go. Limit it to a paragraph or two. Consider adding a small example.
-
-## Support us
-
-[<img src="https://github-ads.s3.eu-central-1.amazonaws.com/package-history-laravel.jpg?t=1" width="419px" />](https://softonsofa.com/github-ad-click/package-history-laravel)
-
-We invest a lot of resources into creating [best in class open source packages](https://softonsofa.com/open-source). You can support us by [buying one of our paid products](https://softonsofa.com/open-source/support-us).
-
-We highly appreciate you sending us a postcard from your hometown, mentioning which of our package(s) you are using. You'll find our address on [our contact page](https://softonsofa.com/about-us). We publish all received postcards on [our virtual postcard wall](https://softonsofa.com/open-source/postcards).
+## Roadmap (contributions most welcome 🙏🏼)
+- [ ] retention [configuration & command](./config/history.php)
+- [ ] bundle frontend implementation to present history in a beautiful form **blade**
+- [ ] bundle frontend implementation to present history in a beautiful form **vue**
+- [ ] bundle frontend implementation to present history in a beautiful form **TALL stack**
+- [ ] bundle frontend implementation to present history in a beautiful form **react**
 
 ## Installation
 
 You can install the package via composer:
 
 ```bash
-composer require sofa/history
+composer require sofa/laravel-history
 ```
 
-You can publish and run the migrations with:
+Then publish migrations and config, then run migrations to create the necessary table:
 
 ```bash
-php artisan vendor:publish --provider="Sofa\History\HistoryServiceProvider" --tag="migrations"
+php artisan vendor:publish --provider="Sofa\History\HistoryServiceProvider"
 php artisan migrate
-```
-
-You can publish the config file with:
-```bash
-php artisan vendor:publish --provider="Sofa\History\HistoryServiceProvider" --tag="config"
 ```
 
 This is the contents of the published config file:
 
 ```php
 return [
+    /**
+     * Model of the User performing actions and recorded in the history.
+     *
+     * @see \Sofa\History\History::user()
+     */
+    'user_model' => 'App\Models\User',
+
+    /**
+     * Custom user resolver for the actions recorded by the package.
+     * Should be callable returning a User performing an action, or their raw identifier.
+     * By default auth()->id() is used.
+     *
+     * @see \Sofa\History\HistoryListener::getUserId()
+     */
+    'user_resolver' => null,
+
+    /**
+     * **RETENTION** requires adding cleanup command to your schedule
+     *
+     * Retention period for the history records.
+     * Accepts any parsable date string, eg.
+     * '2021-01-01' -> retain anything since 2021-01-01
+     * '3 months' -> retain anything no older than 3 months
+     * '1 year' -> retain anything no older than 1 year
+     * @see strtotime()
+     *
+     * @see \Sofa\History\RetentionCommand
+     */
+    'retention' => null,
 ];
 ```
 
 ## Usage
 
+#### Time travel with your models:
+
 ``` php
-$history = new Sofa\History();
-echo $history->echoPhrase('Hello, Sofa!');
+$postFromThePast = History::recreate(Post::class, $id, '2020-12-10, ['categories']);
+// or: $postFromThePast = Post::recreate($id, '2020-12-10, ['categories']);
+
+// model attributes as of 2020-12-10:
+$postFromThePast->title;
+
+// relations as of 2020-12-10:
+$postFromThePast->categories->count()
+
+// related models attributes also as of 2020-12-10:
+$postFromThePast->categories->first->name;
+```
+
+
+#### Get a full history/audit log of your models
+
+``` php
+$history = History::for($post)->get();
+
+# For each update in the history you will get an entry like below:
+>>> $history->first()
+=> Sofa\History\History {#4320
+     id: 16,
+     model_type: "App\Models\Post",
+     model_id: 5,
+     action: "created",
+     data: "{"title": "officiis", "user_id": 5, "created_at": "2021-06-07 00:00:00", "updated_at": "2021-06-07 00:00:00"}",
+     user_id: null,
+     created_at: "2021-06-07 00:00:00",
+     updated_at: "2021-06-07 00:00:00",
+   }
+
+# And here you can see a sample of the recorded activity:
+>>> $history->pluck('action')
+=> Illuminate\Support\Collection {#4315
+     all: [
+       "created",
+       "pivot_attached",
+       "pivot_attached",
+       "pivot_attached",
+       "updated",
+       "updated",
+       "pivot_detached",
+       "pivot_detached",
+       "pivot_detached",
+       "deleted",
+       "restored",
+       "pivot_attached",
+       "pivot_attached",
+     ],
+   }
 ```
 
 ## Testing
@@ -62,10 +135,6 @@ Please see [CHANGELOG](CHANGELOG.md) for more information on what has changed re
 ## Contributing
 
 Please see [CONTRIBUTING](.github/CONTRIBUTING.md) for details.
-
-## Security Vulnerabilities
-
-Please review [our security policy](../../security/policy) on how to report security vulnerabilities.
 
 ## Credits
 
