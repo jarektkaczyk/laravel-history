@@ -1,6 +1,6 @@
 # Eloquent History
 
-[![Latest Version on Packagist](https://img.shields.io/packagist/v/sofa/laravel-history.svg?style=flat-square)](https://packagist.org/packages/sofa/laravel-history)
+[![Latest Version on Packagist](https://poser.pugx.org/sofa/laravel-history/v/stable?format=flat-square)](https://packagist.org/packages/sofa/laravel-history)
 [![GitHub Tests Action Status](https://github.com/jarektkaczyk/laravel-history/workflows/Tests/badge.svg)](https://github.com/jarektkaczyk/laravel-history/actions/workflows/run-tests.yml?branch%3Amain)
 [![Total Downloads](https://img.shields.io/packagist/dt/sofa/laravel-history.svg?style=flat-square)](https://packagist.org/packages/sofa/laravel-history)
 
