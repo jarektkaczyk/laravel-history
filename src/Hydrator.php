@@ -210,7 +210,7 @@ class Hydrator
         // HasOne is a tricky relation to recreate in the past, so we need to make some assumptions first
         // If they are not met, then we'll simply throw an exception rather than recreating wrong data.
         $baseQuery = $relation->getQuery()->getQuery();
-        if (count($baseQuery->orders) !== 1) {
+        if (!$baseQuery->orders || count($baseQuery->orders) !== 1) {
             throw new RelationNotSupported(
                 'Unable to reliably recreate HasOne history without single sorting applied on the relation'
             );

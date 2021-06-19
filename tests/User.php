@@ -45,7 +45,11 @@ class User extends Model
      */
     public function lastPost(): HasOne
     {
-        return $this->hasOne(Post::class, 'user_id')->latest('id');
+        return $this->hasOne(Post::class, 'user_id')
+            ->where('id', '>', 0)
+            ->whereIn('id', range(1, Post::max('id')))
+            ->whereNotIn('id', [0])
+            ->latest('id');
     }
 
     public function postVersions(): HasManyThrough

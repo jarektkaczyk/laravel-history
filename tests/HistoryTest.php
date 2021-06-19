@@ -4,34 +4,68 @@ namespace Sofa\History\Tests;
 
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
+use Orchestra\Testbench\TestCase;
+use Sofa\History\Exceptions\RelationNotSupported;
 use Sofa\History\History;
+use Sofa\History\HistoryServiceProvider;
 
 /**
- * TODO functional
+ * TODO
  * - [ ] configurable, automatic retention period
  * - [ ] integration helper commands (BTM PivotEvents, mixin docblock, more?)
  * - [ ] support BelongsToMany::detach() run on the query directly. Low prio, workaround exists
  * - [ ] previous/next version. Cool, but low prio
- * - [ ] recreate 'hasOne|morhOne' relation without single sorting constraint. Low prio and tough nut to crack?
+ * - [ ] recreate 'hasOne|morphOne' relation without single sorting constraint. Low prio and tough nut to crack?
  * - [ ] recreate 'hasOneThrough' relation. Low prio
- * - [ ] recreate custom relations (Marcoable?). Low prio
+ * - [ ] recreate custom relations (Macroable?). Low prio
  * - [ ] customize recorded fields? Unnecessary unless proven otherwise
  * - [ ] configure table name? Unnecessary unless proven otherwise
  * - [ ] assess scaling issues
- *
- * TODO housekeeping
- * - [ ] cleanup the tests below and overall test setup
- * - [ ] handle test migrations properly (don't run with another driver now)
  */
 class HistoryTest extends TestCase
 {
     public function setUp(): void
     {
         parent::setUp();
-        $this->prepareTables();
         config(['history.user_model' => User::class]);
+    }
+
+    protected function getPackageProviders($app)
+    {
+        return [HistoryServiceProvider::class];
+    }
+
+    protected function defineDatabaseMigrations()
+    {
+        $this->loadMigrationsFrom(__DIR__ . '/database/migrations');
+    }
+
+    public function getEnvironmentSetUp($app)
+    {
+        $app['config']->set('database.default', 'sqlite');
+        $app['config']->set('database.connections.sqlite', [
+            'driver' => 'sqlite',
+            'database' => ':memory:',
+            'prefix' => '',
+        ]);
+
+        // In order to test HasXxxThrough relations we need a DB driver supporting WHERE IN on json column
+        // Use this setup for full coverage, but a little slower tests
+//        $app['config']->set('database.default', 'mysql');
+//        $app['config']->set('database.connections.mysql', [
+//            'driver' => 'mysql',
+//            'host' => '127.0.0.1',
+//            'port' => '3306',
+//            'database' => 'history_tests',
+//            'username' => 'root',
+//            'password' => '',
+//            'unix_socket' => '',
+//            'charset' => 'utf8mb4',
+//            'collation' => 'utf8mb4_unicode_ci',
+//            'prefix' => '',
+//            'prefix_indexes' => true,
+//            'strict' => true,
+//        ]);
     }
 
     /** @test */
@@ -495,19 +529,19 @@ class HistoryTest extends TestCase
         $category->comments()->save($comment);
 
         /** @var Comment $commentFromThePast */
-        $commentFromThePast = History::recreate(Comment::class, $comment->uuid, '2020-12-02', ['model']);
+        $commentFromThePast = History::recreate(Comment::class, $comment->id, '2020-12-02', ['model']);
         $this->assertSame($commentFromThePast->model->getKey(), $post1->getKey());
         $this->assertTrue($commentFromThePast->model instanceof Post);
 
-        $commentFromThePast = History::recreate(Comment::class, $comment->uuid, '2020-12-03', ['model']);
+        $commentFromThePast = History::recreate(Comment::class, $comment->id, '2020-12-03', ['model']);
         $this->assertSame($commentFromThePast->model->getKey(), $post2->getKey());
         $this->assertTrue($commentFromThePast->model instanceof Post);
 
-        $commentFromThePast = History::recreate(Comment::class, $comment->uuid, '2020-12-04', ['model']);
+        $commentFromThePast = History::recreate(Comment::class, $comment->id, '2020-12-04', ['model']);
         $this->assertSame($commentFromThePast->model->getKey(), $post1->getKey());
         $this->assertTrue($commentFromThePast->model instanceof Post);
 
-        $commentFromThePast = History::recreate(Comment::class, $comment->uuid, '2020-12-05', ['model']);
+        $commentFromThePast = History::recreate(Comment::class, $comment->id, '2020-12-05', ['model']);
         $this->assertSame($commentFromThePast->model->getKey(), $category->getKey());
         $this->assertTrue($commentFromThePast->model instanceof Category);
     }
@@ -530,25 +564,25 @@ class HistoryTest extends TestCase
 
         /** @var Post $post1FromThePast */
         $post1FromThePast = History::recreate(Post::class, $post1->id, '2020-12-01', ['comments']);
-        $this->assertEquals(collect([$comment1_1->uuid]), $post1FromThePast->comments->pluck('uuid'));
+        $this->assertEquals(collect([$comment1_1->id]), $post1FromThePast->comments->pluck('id'));
 
         $post1FromThePast = History::recreate(Post::class, $post1->id, '2020-12-02', ['comments']);
         $this->assertEquals(
-            collect([$comment1_1, $comment1_2, $comment1_3])->pluck('uuid')->sort()->values(),
-            $post1FromThePast->comments->pluck('uuid')->sort()->values(),
+            collect([$comment1_1, $comment1_2, $comment1_3])->pluck('id')->sort()->values(),
+            $post1FromThePast->comments->pluck('id')->sort()->values(),
         );
 
         $post1FromThePast = History::recreate(Post::class, $post1->id, '2020-12-03', ['comments']);
         $this->assertEquals(
-            collect([$comment1_2, $comment1_3])->pluck('uuid')->sort()->values(),
-            $post1FromThePast->comments->pluck('uuid')->sort()->values(),
+            collect([$comment1_2, $comment1_3])->pluck('id')->sort()->values(),
+            $post1FromThePast->comments->pluck('id')->sort()->values(),
         );
 
         /** @var Post $post2FromThePast */
         $post2FromThePast = History::recreate(Post::class, $post2->id, '2020-12-03', ['comments']);
         $this->assertEquals(
-            collect([$comment1_1, $comment2_1])->pluck('uuid')->sort()->values(),
-            $post2FromThePast->comments->pluck('uuid')->sort()->values(),
+            collect([$comment1_1, $comment2_1])->pluck('id')->sort()->values(),
+            $post2FromThePast->comments->pluck('id')->sort()->values(),
         );
     }
 
@@ -676,71 +710,36 @@ class HistoryTest extends TestCase
         $this->assertEquals($postFromThePast, Post::recreate($post->id, '2020-12-01', ['tags']));
     }
 
+    /** @test */
+    public function unsupported_relation()
+    {
+        $this->expectException(RelationNotSupported::class);
+
+        $model = DummyUnsupportedRelationModel::create();
+        History::recreate(DummyUnsupportedRelationModel::class, $model->id, now(), ['unsupportedRelation']);
+    }
+
+    /** @test */
+    public function unsupported_has_one()
+    {
+        $this->expectException(RelationNotSupported::class);
+
+        $model = DummyUnsupportedRelationModel::create();
+        History::recreate(DummyUnsupportedRelationModel::class, $model->id, now(), ['hasOneWithUnsupportedWhere']);
+    }
+
+    /** @test */
+    public function unsupported_has_one_without_ordering()
+    {
+        $this->expectException(RelationNotSupported::class);
+
+        $model = DummyUnsupportedRelationModel::create();
+        History::recreate(DummyUnsupportedRelationModel::class, $model->id, now(), ['hasOneWithoutOrdering']);
+    }
+
     private function timeTravel($time): void
     {
         Carbon::setTestNow(Carbon::parse($time)->startOfDay());
         CarbonImmutable::setTestNow(CarbonImmutable::parse($time)->startOfDay());
-    }
-
-    private function prepareTables(): void
-    {
-        Schema::create('users', function (Blueprint $table) {
-            $table->bigIncrements('id');
-            $table->string('name')->nullable();
-            $table->string('email')->nullable();
-            $table->string('phone')->nullable();
-            $table->softDeletes();
-            $table->timestamps();
-        });
-
-        Schema::create('posts', function (Blueprint $table) {
-            $table->bigIncrements('id');
-            $table->string('title')->nullable();
-            $table->string('body')->nullable();
-            $table->bigInteger('user_id')->nullable();
-            $table->timestamps();
-            $table->softDeletes();
-        });
-
-        Schema::create('categories', function (Blueprint $table) {
-            $table->bigIncrements('id');
-            $table->string('name')->nullable();
-            $table->softDeletes();
-            $table->timestamps();
-        });
-
-        Schema::create('category_post', function (Blueprint $table) {
-            $table->bigInteger('category_id');
-            $table->bigInteger('post_id');
-            $table->string('extra_value')->nullable();
-            $table->string('another_value')->nullable();
-            $table->timestamps();
-        });
-
-        Schema::create('comments', function (Blueprint $table) {
-            $table->uuid('uuid');
-            $table->string('body')->nullable();
-            $table->morphs('model');
-            $table->timestamps();
-        });
-
-        Schema::create('taggables', function (Blueprint $table) {
-            $table->unsignedBigInteger('tag_id');
-            $table->morphs('taggable');
-            $table->timestamps();
-        });
-
-        Schema::create('tags', function (Blueprint $table) {
-            $table->bigIncrements('id');
-            $table->string('name')->nullable();
-            $table->timestamps();
-        });
-
-        Schema::create('versions', function (Blueprint $table) {
-            $table->bigIncrements('id');
-            $table->bigInteger('post_id');
-            $table->integer('version');
-            $table->timestamps();
-        });
     }
 }
