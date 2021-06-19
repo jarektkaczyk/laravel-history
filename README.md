@@ -69,8 +69,8 @@ return [
 #### Time travel with your models:
 
 ``` php
-$postFromThePast = History::recreate(Post::class, $id, '2020-12-10, ['categories']);
-// or: $postFromThePast = Post::recreate($id, '2020-12-10, ['categories']);
+$postFromThePast = History::recreate(Post::class, $id, '2020-12-10', ['categories']);
+// or: $postFromThePast = Post::recreate($id, '2020-12-10', ['categories']);
 
 // model attributes as of 2020-12-10:
 $postFromThePast->title;
